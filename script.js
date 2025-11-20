@@ -3,8 +3,8 @@
   const mouseIndicator = document.querySelector('.mouse-indicator');
 
   let inactivityTimout = null;
-  let isAutoAnimating = false;
   let autoAnimationFrameId = null;
+  let autoAnimationLastFrameTime = null;
   let mouseIndicatorStartTimeout = null;
 
   const centerX = window.innerWidth / 2;
@@ -45,9 +45,7 @@
 
   const update = (skipInterpolation = false) => {
     const interpolationSpeed = skipInterpolation ? 1 : 0.1;
-    const deltaHue = targetState.hue - currentState.hue;
-    const correctedDeltaHue = deltaHue < -180 ? deltaHue + 360 : (deltaHue > 180 ? deltaHue - 360 : deltaHue);
-    currentState.hue += correctedDeltaHue * interpolationSpeed;
+    currentState.hue = targetState.hue; // no interpolation for hue to avoid color banding
     ['saturation', 'lightness', 'rotateX', 'rotateY'].forEach(prop => {
       currentState[prop] += (targetState[prop] - currentState[prop]) * interpolationSpeed;
     });
@@ -67,16 +65,20 @@
   }
 
   const animateAuto = () => {
-    if (!isAutoAnimating) return;
-    const position = getCirclePosition(lastPosition.angle + 0.03);
-    updateTargetFromPosition(position);
-    mouseIndicator.style.left = `${centerX + position.deltaX}px`;
-    mouseIndicator.style.top = `${centerY + position.deltaY}px`;
+    if (!autoAnimationLastFrameTime) return;
+    const frameTime = Date.now();
+    const delta = frameTime - autoAnimationLastFrameTime;
+    const newAngle = lastPosition.angle + delta * (Math.PI / 3000); // full rotation in 8 seconds
+    const newPosition = getCirclePosition(newAngle);
+    updateTargetFromPosition(newPosition);
+    mouseIndicator.style.left = `${centerX + newPosition.deltaX}px`;
+    mouseIndicator.style.top = `${centerY + newPosition.deltaY}px`;
+    autoAnimationLastFrameTime = frameTime;
     autoAnimationFrameId = requestAnimationFrame(animateAuto);
   };
 
   const startAutoAnimation = () => {
-    isAutoAnimating = true;
+    autoAnimationLastFrameTime = Date.now();
     animateAuto();
     mouseIndicatorStartTimeout = setTimeout(() => {
       mouseIndicator.classList.add('visible');
@@ -85,7 +87,7 @@
   };
 
   const stopAutoAnimation = () => {
-    isAutoAnimating = false;
+    autoAnimationLastFrameTime = null;
     if (autoAnimationFrameId) {
       cancelAnimationFrame(autoAnimationFrameId);
       autoAnimationFrameId = null;
@@ -95,7 +97,7 @@
   };
 
   document.addEventListener('mousemove', (e) => {
-    if (isAutoAnimating) stopAutoAnimation();
+    if (autoAnimationLastFrameTime) stopAutoAnimation();
     clearTimeout(inactivityTimout);
     const position = getPosition(e.clientX, e.clientY);
     updateTargetFromPosition(position);
